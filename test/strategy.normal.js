@@ -1,206 +1,232 @@
-var chai = require('chai')
-  , jwt = require('jsonwebtoken')
-  , Strategy = require('../lib/strategy');
+const jwt = require('jsonwebtoken');
+const chai = require('chai');
 
+const expect = chai.expect;
+chai.use(require('chai-passport-strategy'));
 
-describe('Strategy', function() {
-  var secret = Math.random().toString(36).replace(/[^a-z]+/g, '');
-  var strategy = new Strategy(
-    secret,
-    function(token, done) {
-      if (token.sub % 2) {
-        return done(null, { id: token.sub }, token);
-      }
-      return done(null, false);
-    }
-  );
+const Strategy = require('../lib/strategy');
 
-  describe('handling a request with valid token in header', function() {
-    var user
-      , info;
+const subject = 'subject';
 
-    before(function(done) {
+let user;
+let info;
+
+const secret = Math.random().toString(36).replace(/[^a-z]+/g, '');
+const strategy = new Strategy(
+  secret,
+  {},
+  (token, done) => done(null, { id: token.sub }, token)
+);
+
+describe('Passport HTTP JWT Bearer Strategy', () => {
+  describe('handling a request with valid token in header', () => {
+    before((done) => {
       chai.passport.use(strategy)
-        .success(function(u, i) {
+        .success((u, i) => {
           user = u;
           info = i;
           done();
         })
-        .req(function(req) {
-          req.headers.authorization = 'Bearer ' + jwt.sign({}, secret, {subject: 1, expiresInMinutes: 15});
+        .request((req, res, next) => {
+          jwt.sign({}, secret, { subject, expiresIn: '15m' }, (err, encoded) => {
+            expect(err).to.be.null;
+            req.headers.authorization = `Bearer ${encoded}`;
+            next();
+          });
         })
         .authenticate();
     });
 
-    it('should supply user', function() {
+    it('should supply user', () => {
       expect(user).to.be.an.object;
-      expect(user.id).to.equal(1);
+      expect(user.id).to.equal(subject);
     });
 
-    it('should supply info', function() {
+    it('should supply info', () => {
       expect(info).to.be.an.object;
-      expect(info).to.have.property('sub', 1);
+      expect(info).to.have.property('sub', subject);
     });
   });
 
-  describe('handling a request with valid token in form-encoded body parameter', function() {
-    var user
-      , info;
-
-    before(function(done) {
+  describe('handling a request with valid token in form-encoded body parameter', () => {
+    before((done) => {
       chai.passport.use(strategy)
-        .success(function(u, i) {
+        .success((u, i) => {
           user = u;
           info = i;
           done();
         })
-        .req(function(req) {
-          req.body = {};
-          req.body.access_token = jwt.sign({}, secret, {subject: 1, expiresInMinutes: 15});
+        .request((req, res, next) => {
+          jwt.sign({}, secret, { subject, expiresIn: '15m' }, (err, encoded) => {
+            expect(err).to.be.null;
+            req.body = { access_token: encoded };
+            next();
+          });
         })
         .authenticate();
     });
 
-    it('should supply user', function() {
+    it('should supply user', () => {
       expect(user).to.be.an.object;
-      expect(user.id).to.equal(1);
+      expect(user.id).to.equal(subject);
     });
 
-    it('should supply info', function() {
+    it('should supply info', () => {
       expect(info).to.be.an.object;
-      expect(info).to.have.property('sub', 1);
+      expect(info).to.have.property('sub', subject);
     });
   });
 
-  describe('handling a request with valid credential in URI query parameter', function() {
-    var user
-      , info;
-
-    before(function(done) {
+  describe('handling a request with valid credential in URI query parameter', () => {
+    before((done) => {
       chai.passport.use(strategy)
-        .success(function(u, i) {
+        .success((u, i) => {
           user = u;
           info = i;
           done();
         })
-        .req(function(req) {
-          req.query = {};
-          req.query.access_token = jwt.sign({}, secret, {subject: 1, expiresInMinutes: 15});
+        .request((req, res, next) => {
+          jwt.sign({}, secret, { subject, expiresIn: '15m' }, (err, encoded) => {
+            expect(err).to.be.null;
+            req.query = { access_token: encoded };
+            next();
+          });
         })
         .authenticate();
     });
 
-    it('should supply user', function() {
+    it('should supply user', () => {
       expect(user).to.be.an.object;
-      expect(user.id).to.equal(1);
+      expect(user.id).to.equal(subject);
     });
 
-    it('should supply info', function() {
+    it('should supply info', () => {
       expect(info).to.be.an.object;
-      expect(info).to.have.property('sub', 1);
+      expect(info).to.have.property('sub', subject);
     });
   });
 
-  describe('handling a request with wrong token in header', function() {
-
-    it('should fail with challenge when token is malformed', function(done) {
+  describe('handling a request with wrong token in header', () => {
+    it('should fail with challenge when token is malformed', (done) => {
       chai.passport.use(strategy)
-        .fail(function(challenge) {;
+        .fail((challenge) => {
           expect(challenge).to.be.a.string;
-          expect(challenge).to.equal('Bearer realm="Users", error="invalid_token", error_description="Invalid token (jwt malformed)"');
+          expect(challenge).to.equal(
+            'Bearer realm="Users", error="invalid_token", error_description="Invalid token (jwt malformed)"');
           done();
         })
-        .req(function(req) {
+        .request((req) => {
           req.headers.authorization = 'Bearer WRONG';
         })
         .authenticate();
     });
 
-    it('should fail with challenge when token is expired', function(done) {
+    it('should fail with challenge when token is expired', (done) => {
       chai.passport.use(strategy)
-        .fail(function(challenge) {;
+        .fail((challenge) => {
           expect(challenge).to.be.a.string;
-          expect(challenge).to.equal('Bearer realm="Users", error="invalid_token", error_description="The access token expired"');
+          expect(challenge).to.equal(
+            'Bearer realm="Users", error="invalid_token", error_description="The access token expired"');
           done();
         })
-        .req(function(req) {
-          req.headers.authorization = 'Bearer ' + jwt.sign({}, secret, {subject: 1, expiresInMinutes: -1});
+        .request((req, res, next) => {
+          jwt.sign({}, secret, { subject, expiresIn: '-1m' }, (err, encoded) => {
+            expect(err).to.be.null;
+            req.headers.authorization = `Bearer ${encoded}`;
+            next();
+          });
         })
         .authenticate();
     });
 
-    it('should fail with challenge when token signature is invalid', function(done) {
+    it('should fail with challenge when token signature is invalid', (done) => {
       chai.passport.use(strategy)
-        .fail(function(challenge) {;
+        .fail((challenge) => {
           expect(challenge).to.be.a.string;
-          expect(challenge).to.equal('Bearer realm="Users", error="invalid_token", error_description="Invalid token (invalid signature)"');
+          expect(challenge).to.equal(
+            'Bearer realm="Users", error="invalid_token", error_description="Invalid token (invalid signature)"');
           done();
         })
-        .req(function(req) {
-          req.headers.authorization = 'Bearer ' + jwt.sign({}, secret + 'x', {subject: 1, expiresInMinutes: 15});
+        .request((req, res, next) => {
+          jwt.sign({}, `${secret}x`, { subject, expiresIn: '15m' }, (err, encoded) => {
+            expect(err).to.be.null;
+            req.headers.authorization = `Bearer ${encoded}`;
+            next();
+          });
         })
         .authenticate();
     });
 
-    it('should fail with challenge when token signature is not signed', function(done) {
+    it('should fail with challenge when token signature is not signed', (done) => {
       chai.passport.use(strategy)
-        .fail(function(challenge) {;
+        .fail((challenge) => {
           expect(challenge).to.be.a.string;
-          expect(challenge).to.equal('Bearer realm="Users", error="invalid_token", error_description="Invalid token (jwt signature is required)"');
+          expect(challenge).to.equal(
+            'Bearer realm="Users", error="invalid_token", error_description="Invalid token (jwt signature is required)"');
           done();
         })
-        .req(function(req) {
-          req.headers.authorization = 'Bearer ' + jwt.sign({}, secret, {subject: 1, expiresInMinutes: 15, algorithm: 'none'});
+        .request((req, res, next) => {
+          jwt.sign({}, secret, { subject, expiresIn: '15m', algorithm: 'none' }, (err, encoded) => {
+            expect(err).to.be.null;
+            req.headers.authorization = `Bearer ${encoded}`;
+            next();
+          });
         })
         .authenticate();
     });
 
-    it('should fail with challenge when token audience does not match', function(done) {
-      chai.passport.use(new Strategy(secret, {audience: 'foo'}, function(token, done) { done(null, false)}))
-        .fail(function(challenge) {;
+    it('should fail with challenge when token audience does not match', (done) => {
+      chai.passport.use(new Strategy(secret, { audience: 'foo' }, (token, cb) => cb(null, false)))
+        .fail((challenge) => {
           expect(challenge).to.be.a.string;
-          expect(challenge).to.equal('Bearer realm="Users", error="invalid_token", error_description="Invalid token (jwt audience invalid. expected: foo)"');
+          expect(challenge).to.equal('Bearer realm="Users", error="invalid_token", error_description="Invalid token (jwt audience invalid. expected: foo)"');  // eslint-disable-line
           done();
         })
-        .req(function(req) {
-          req.headers.authorization = 'Bearer ' + jwt.sign({}, secret, {audience: 'bar', subject: 1, expiresInMinutes: 15});
+        .request((req, res, next) => {
+          jwt.sign({}, secret, { audience: 'bar', subject, expiresIn: '15m' }, (err, encoded) => {
+            expect(err).to.be.null;
+            req.headers.authorization = `Bearer ${encoded}`;
+            next();
+          });
         })
         .authenticate();
     });
 
-    it('should fail with challenge when token issuer does not match', function(done) {
-      chai.passport.use(new Strategy(secret, {issuer: 'foo'}, function(token, done) { done(null, false)}))
-        .fail(function(challenge) {;
+    it('should fail with challenge when token issuer does not match', (done) => {
+      chai.passport.use(new Strategy(secret, { issuer: 'foo' }, (token, cb) => cb(null, false)))
+        .fail((challenge) => {
           expect(challenge).to.be.a.string;
-          expect(challenge).to.equal('Bearer realm="Users", error="invalid_token", error_description="Invalid token (jwt issuer invalid. expected: foo)"');
+          expect(challenge).to.equal('Bearer realm="Users", error="invalid_token", error_description="Invalid token (jwt issuer invalid. expected: foo)"');  // eslint-disable-line
           done();
         })
-        .req(function(req) {
-          req.headers.authorization = 'Bearer ' + jwt.sign({}, secret, {issuer: 'bar', subject: 1, expiresInMinutes: 15});
+        .request((req, res, next) => {
+          jwt.sign({}, secret, { issuer: 'bar', subject, expiresIn: '15m' }, (err, encoded) => {
+            expect(err).to.be.null;
+            req.headers.authorization = `Bearer ${encoded}`;
+            next();
+          });
         })
         .authenticate();
     });
-
   });
 
-  describe('handling a request without credentials', function() {
-    var challenge;
+  describe('handling a request without credentials', () => {
+    let challenge;
 
-    before(function(done) {
+    before((done) => {
       chai.passport.use(strategy)
-        .fail(function(c) {
+        .fail((c) => {
           challenge = c;
           done();
         })
-        .req(function(req) {
+        .request(() => {
         })
         .authenticate();
     });
 
-    it('should fail with challenge', function() {
+    it('should fail with challenge', () => {
       expect(challenge).to.be.a.string;
       expect(challenge).to.equal('Bearer realm="Users"');
     });
   });
-
 });
